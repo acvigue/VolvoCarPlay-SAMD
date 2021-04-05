@@ -71,7 +71,7 @@ bool exit_hold_started_flag = false;
 unsigned long long exit_hold_started_time = 0;
 
 bool offset(int bitno, int val) {
-  int diff = 0-(current_sws_data[bitno] - current_sws_base[bitno]);
+  int diff = 0-(current_sws_base[bitno] - current_sws_data[bitno]);
   if(val == diff) {
     return true;
   }
