@@ -48,12 +48,14 @@ void setup() {
 }
 
 int current_disp = 1;
+int last_disp = 0;
 byte current_sws_data[8];
 byte current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF};
 byte sws_offsets[8];
 int scrl_dir = 1;
 
 void fire_scroll_event() {
+  SerialUSB.println("scroll evt");
   if(scrl_dir == 1) {
     Keyboard.press(KEY_UP_ARROW);
     delayMicroseconds(50);
@@ -63,6 +65,49 @@ void fire_scroll_event() {
     delayMicroseconds(50);
     Keyboard.release(KEY_DOWN_ARROW);
   }
+}
+
+bool exit_hold_started_flag = false;
+unsigned long long exit_hold_started_time = 0;
+
+bool offset(int bitno, int val) {
+  int diff = 0-(current_sws_data[bitno] - current_sws_base[bitno]);
+  if(val == diff) {
+    return true;
+  }
+
+  //check for overflows
+  if(val > 0) {
+    //upper wraparound
+    int distance_to_top = 255-current_sws_base[bitno];
+    if(current_sws_data[bitno] == (val - distance_to_top)) {
+      return true;
+    }
+  } else {
+    //lower wraparound
+    int distance_to_zero = current_sws_base[bitno];
+    if(current_sws_data[bitno] == 255-(abs(val) - abs(distance_to_zero))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void debug_print_sws() {
+  Serial.print("Base: ");
+  for(int i = 0; i >= 8; i++) {
+    Serial.print(current_sws_base[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  Serial.print("Data: ");
+  for(int i = 0; i >= 8; i++) {
+    Serial.print(current_sws_data[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
 }
 
 void loop() {
@@ -96,58 +141,102 @@ void loop() {
           }
 
           if(offset(5, 34) && offset(6, 1) && offset(7, -35)) {
+            SerialUSB.println("down dir");
             scrl_dir = 0;
           }
 
           if(offset(5, 34) && offset(6, 0) && offset(7, -34)) {
+            SerialUSB.println("up dir");
             scrl_dir = 1;
           }
 
           if(current_sws_base == current_sws_data) {
+            SerialUSB.println("CHANGE on SWSR!");
+            debug_print_sws();
             if(current_disp == 1) {
+              SerialUSB.println("Proxying to ICM.");
               //if icm displaying, proxy all keypresses.
               LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
-            } else {
-            //if ext input displaying, proxy only volume up/down
-            if(offset(5, 1) && offset(7, -1)) {
-              //volume up
-              LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
-            }
 
-            if(offset(4, 128) && offset(7, -128)) {
-              //volume down
-              LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
-            }
-
-            //Handle all other keypresses & generate HID events
-            if(offset(4, 64) && offset(7, -64)) {
-              //Exit
-              Keyboard.press(KEY_ESC);
+              //Handle hold exit to switch
+              if(offset(4, 64) && offset(7, -64)) {
+                //Exit
+                if(exit_hold_started_flag == false) {
+                  SerialUSB.println("Exit hold start.");
+                  exit_hold_started_flag = true;
+                  exit_hold_started_time = millis();
+                } else {
+                  if(millis() - exit_hold_started_time > 3000) {
+                    SerialUSB.println("Exit released, switching to LineageOS");
+                    current_disp = 2;
+                    exit_hold_started_time = millis();
+                  } else {
+                    SerialUSB.println("Exit released too quickly");
+                  }
+                }
+              } else {
+                exit_hold_started_flag = false;
+              }
             } else {
-              Keyboard.release(KEY_ESC);
-            }
+              SerialUSB.println("Sending to LineageOS");
+              //if ext input displaying, proxy only volume up/down
+              if(offset(5, 1) && offset(7, -1)) {
+                //volume up
+                LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
+              }
 
-            if(offset(4, 4) && offset(7, -4)) {
-              //Voice
-              Keyboard.press('v');
-            } else {
-              Keyboard.release('v');
-            }
+              if(offset(4, 128) && offset(7, -128)) {
+                //volume down
+                LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
+              }
 
-            if(offset(4, 2) && offset(7, -2)) {
-              //reverse
-              Keyboard.press('r');
-            } else {
-              Keyboard.release('r');
-            }
+              //proxy scroll events
+              if(offset(5, 2) && offset(7, -2)) {
+                LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
+              }
 
-            if(offset(4, -16) && offset(7, 16)) {
-              //forward
-              Keyboard.press('f');
-            } else {
-              Keyboard.release('f');
+              //Handle all other keypresses & generate HID events
+              if(offset(4, 64) && offset(7, -64)) {
+                //Exit
+                if(exit_hold_started_flag == false) {
+                  SerialUSB.println("Exit hold start.");
+                  exit_hold_started_flag = true;
+                  exit_hold_started_time = millis();
+                } else {
+                  if(millis() - exit_hold_started_time > 3000) {
+                    SerialUSB.println("Exit released, switching to ICM");
+                    current_disp = 1;
+                  } else {
+                    SerialUSB.println("Exit released too quickly");
+                    Keyboard.press(KEY_ESC);
+                  }
+                }
+              } else {
+                exit_hold_started_flag = false;
+                Keyboard.release(KEY_ESC);
+              }
+
+              if(offset(4, 4) && offset(7, -4)) {
+                //Voice
+                Keyboard.press('v');
+              } else {
+                Keyboard.release('v');
+              }
+
+              if(offset(4, 2) && offset(7, -2)) {
+                //reverse
+                Keyboard.press('r');
+              } else {
+                Keyboard.release('r');
+              }
+
+              if(offset(4, -16) && offset(7, 16)) {
+                //forward
+                Keyboard.press('f');
+              } else {
+                Keyboard.release('f');
+              }
             }
-          }
           }
         } else {
           LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
@@ -158,22 +247,15 @@ void loop() {
       }
     }
   }
-}
 
-bool offset(int bitno, int val) {
-  int diff = 0-(current_sws_data[bitno] - current_sws_base[bitno]);
-  if(val == diff) {
-    return true;
+
+  if(current_disp != last_disp) {
+    last_disp = current_disp;
+
+    if(current_disp == 1) {
+      SerialUSB.println("cmd: SWITCH to ICM");
+    } else {
+      SerialUSB.println("cmd: SWITCH to EXT");
+    }
   }
-
-  //check for overflows
-  if(diff == 0-(255-val) && val > 0) {
-    return true;
-  }
-
-  if(diff == 255+val && val < 0) {
-    return true;
-  }
-
-  return false;
 }
