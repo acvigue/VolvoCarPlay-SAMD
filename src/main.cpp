@@ -3,6 +3,7 @@
 #include <lin_stack.h>
 #include <Keyboard.h>
 #include <Serial_CAN_Module.h>
+#include <Wire.h>
 
 Serial_CAN can;
 
@@ -44,10 +45,49 @@ void setup() {
   pinPeripheral(12, PIO_SERCOM_ALT);
 
   Keyboard.begin(); // useful to detect host capslock state and LEDs
+
+  //Configure TFP410
+  Wire.begin();
+  Wire.beginTransmission(0b0111000);
+  Wire.write(0x08);
+  Wire.write(0b00110101);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0b0111000);
+  Wire.write(0x09);
+  Wire.write(0b0000001);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0b0111000);
+  Wire.write(0x0A);
+  Wire.write(0x80);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0b0111000);
+  Wire.write(0x33);
+  Wire.write(0x00000000);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0b0111000);
+  Wire.write(0x33);
+  Wire.write(0x00000000);
+  Wire.endTransmission();
+
+  //Configure TMDS261b
+  Wire.beginTransmission(0b0101100);
+  Wire.write(0x01);
+  Wire.write(0b00010000);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0b0101100);
+  Wire.write(0x03);
+  Wire.write(0x80);
+  Wire.endTransmission();
+
   SerialUSB.begin(115200);
 }
 
-int current_disp = 1;
+int current_disp = 2; //due to lineage ECID requirements, display must always be connected on boot.
 int last_disp = 0;
 byte current_sws_data[8];
 byte current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF};
@@ -150,7 +190,7 @@ void loop() {
             scrl_dir = 1;
           }
 
-          if(current_sws_base == current_sws_data) {
+          if(current_sws_data != current_sws_base) {
             SerialUSB.println("CHANGE on SWSR!");
             debug_print_sws();
             if(current_disp == 1) {
@@ -237,6 +277,9 @@ void loop() {
                 Keyboard.release('f');
               }
             }
+          } else {
+            //No change, send base val to ICM for sync purposrs
+            LIN_slave.writeResponse(current_sws_base, sws_resp_data_size);
           }
         } else {
           LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
@@ -254,8 +297,16 @@ void loop() {
 
     if(current_disp == 1) {
       SerialUSB.println("cmd: SWITCH to ICM");
+      Wire.beginTransmission(0b0101100);
+      Wire.write(0x01);
+      Wire.write(0b11010000);
+      Wire.endTransmission();
     } else {
       SerialUSB.println("cmd: SWITCH to EXT");
+      Wire.beginTransmission(0b0101100);
+      Wire.write(0x01);
+      Wire.write(0b10010000);
+      Wire.endTransmission();
     }
   }
 }
