@@ -35,54 +35,58 @@ byte sws_resp_data[8];
 
 lin_stack LIN_slave(1, &Serial3); // Slave - sends responses upstream to ICM
 lin_stack LIN_master(2, &Serial2); // Master - sends frames downstream to SWSR
-  
+
+void tfp410_write(byte reg, byte data) {
+  Wire.beginTransmission(0b0111000);
+  Wire.write(reg);
+  Wire.write(data);
+  Wire.endTransmission();
+}
+
+byte tfp410_read(byte reg) {
+  Wire.beginTransmission(0b0111000);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(0b0111000, 1);
+  if(Wire.available()) {
+    byte b = Wire.read();
+    Wire.endTransmission();
+    return b;
+  }
+  return 0;
+}
+
+void tmds261_write(byte reg, byte data) {
+  Wire.beginTransmission(0b0101100);
+  Wire.write(reg);
+  Wire.write(data);
+  Wire.endTransmission();
+}
+
+byte tmds261_read(byte reg) {
+  return 0;
+}
+
 void setup() {
-  can.begin(&Serial, 9600);      // tx, rx
+  can.begin(&Serial, 9600);
+  Wire.begin();
 
   pinPeripheral(2, PIO_SERCOM_ALT);
   pinPeripheral(5, PIO_SERCOM_ALT);
   pinPeripheral(10, PIO_SERCOM_ALT);
   pinPeripheral(12, PIO_SERCOM_ALT);
 
-  Keyboard.begin(); // useful to detect host capslock state and LEDs
+  Keyboard.begin();
 
   //Configure TFP410
-  Wire.begin();
-  Wire.beginTransmission(0b0111000);
-  Wire.write(0x08);
-  Wire.write(0b00110101);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(0b0111000);
-  Wire.write(0x09);
-  Wire.write(0b0000001);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(0b0111000);
-  Wire.write(0x0A);
-  Wire.write(0x80);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(0b0111000);
-  Wire.write(0x33);
-  Wire.write(0x00000000);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(0b0111000);
-  Wire.write(0x33);
-  Wire.write(0x00000000);
-  Wire.endTransmission();
+  tfp410_write(0x08, 0b00110101);
+  tfp410_write(0x09, 0b00000001);
+  tfp410_write(0x0A, 0b10000000);
+  tfp410_write(0x33, 0x00000000);
 
   //Configure TMDS261b
-  Wire.beginTransmission(0b0101100);
-  Wire.write(0x01);
-  Wire.write(0b00010000);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(0b0101100);
-  Wire.write(0x03);
-  Wire.write(0x80);
-  Wire.endTransmission();
+  tmds261_write(0x01, 0b10010000);
+  tmds261_write(0x03, 0x80);
 
   SerialUSB.begin(115200);
 }
@@ -90,7 +94,8 @@ void setup() {
 int current_disp = 2; //due to lineage ECID requirements, display must always be connected on boot.
 int last_disp = 0;
 byte current_sws_data[8];
-byte current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF};
+byte current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+bool base_set = false;
 byte sws_offsets[8];
 int scrl_dir = 1;
 
@@ -155,6 +160,7 @@ void loop() {
   byte icm_req_ident = 0;
   memset(icm_req_data, 0, icm_req_data_size);
   byte icm_req_avail = LIN_slave.read(icm_req_data, icm_req_data_size, icm_req_ident);
+  
   if(icm_req_avail == 1) {
     bool empty = 1;
     for(int i = 0; i <= icm_req_data_size; i++) {
@@ -173,6 +179,11 @@ void loop() {
       if(sws_resp_avail == 1) {
         if(icm_req_ident == 0x19) {
           memcpy(current_sws_data, sws_resp_data, sizeof(sws_resp_data));
+
+          if(!base_set) {
+            base_set = true;
+            memcpy(current_sws_base, current_sws_data, sizeof(current_sws_data));
+          }
 
           //handle scroll
           if(offset(5, 2) && offset(7, -2)) {
@@ -297,16 +308,12 @@ void loop() {
 
     if(current_disp == 1) {
       SerialUSB.println("cmd: SWITCH to ICM");
-      Wire.beginTransmission(0b0101100);
-      Wire.write(0x01);
-      Wire.write(0b11010000);
-      Wire.endTransmission();
+      tmds261_write(0x01, 0b11010000);
     } else {
       SerialUSB.println("cmd: SWITCH to EXT");
-      Wire.beginTransmission(0b0101100);
-      Wire.write(0x01);
-      Wire.write(0b10010000);
-      Wire.endTransmission();
+      tmds261_write(0x01, 0b10010000);
+
+      //todo: switch to AUX input automatically.
     }
   }
 }
