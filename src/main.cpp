@@ -2,15 +2,12 @@
 #include "wiring_private.h"
 #include <lin_stack.h>
 #include <Keyboard.h>
-#include <Serial_CAN_Module.h>
-#include <Wire.h>
-
-Serial_CAN can;
-
-//Serial - CAN Bus
+//Serial - 115200b USB
 //Serial1 - LIN Slave (to ICM)
 //Serial2 - LIN Master (from SWSR)
-//SerialUSB - Serial comms to/from LineageOS
+
+#include <SlowSoftWire.h>
+SlowSoftWire Wire = SlowSoftWire(13, 11);
 
 //Setup LIN serials on SERCOMs
 Uart Serial2(&sercom1, 12, 10, SERCOM_RX_PAD_3, UART_TX_PAD_2); 
@@ -25,50 +22,60 @@ void SERCOM2_Handler()
   Serial3.IrqHandler();
 }
 
-byte icm_req_data_size=8; // length of byte array
-byte icm_req_data[8]; // byte array for received data
-byte sws_resp_data_size=8;
-byte sws_resp_data[8];
+uint8_t icm_req_data_size=8; // length of uint8_t array
+uint8_t icm_req_data[8]; // uint8_t array for received data
+uint8_t sws_resp_data_size=8;
+uint8_t sws_resp_data[8];
 
 #define DISP_ICM 1;
 #define DISP_EXT 2;
 
+byte tfp410_read(byte reg) {
+  Wire.beginTransmission(0b0111000);
+  for (byte i=1; i<1; i++) Wire.write(0x00);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(0b0111000,1);
+  byte val = Wire.read();
+  return val;
+}
+
+void tfp410_write(byte reg, byte value) {
+  Wire.beginTransmission(0b0111000);
+  Wire.write(reg);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
+byte tmds261b_read(byte reg) {
+  Wire.beginTransmission(0b0101100);
+  for (byte i=1; i<1; i++) Wire.write(0x00);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(0b0101100,1);
+  byte val = Wire.read();
+  return val;
+}
+
+void tmds261b_write(byte reg, byte value) {
+  Wire.beginTransmission(0b0101100);
+  Wire.write(reg);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
 lin_stack LIN_slave(1, &Serial3); // Slave - sends responses upstream to ICM
 lin_stack LIN_master(2, &Serial2); // Master - sends frames downstream to SWSR
 
-void tfp410_write(byte reg, byte data) {
-  Wire.beginTransmission(0b0111000);
-  Wire.write(reg);
-  Wire.write(data);
-  Wire.endTransmission();
-}
-
-byte tfp410_read(byte reg) {
-  Wire.beginTransmission(0b0111000);
-  Wire.write(reg);
-  Wire.endTransmission(false);
-  Wire.requestFrom(0b0111000, 1);
-  if(Wire.available()) {
-    byte b = Wire.read();
-    Wire.endTransmission();
-    return b;
-  }
-  return 0;
-}
-
-void tmds261_write(byte reg, byte data) {
-  Wire.beginTransmission(0b0101100);
-  Wire.write(reg);
-  Wire.write(data);
-  Wire.endTransmission();
-}
-
-byte tmds261_read(byte reg) {
-  return 0;
-}
-
 void setup() {
-  can.begin(&Serial, 9600);
+  Serial.begin(115200);
+  
+  delay(100);
+  pinMode(3, OUTPUT);
+  digitalWrite(3, LOW);
+  delay(200);
+  digitalWrite(3, HIGH);
+
   Wire.begin();
 
   pinPeripheral(2, PIO_SERCOM_ALT);
@@ -78,29 +85,31 @@ void setup() {
 
   Keyboard.begin();
 
-  //Configure TFP410
+  delay(400);
   tfp410_write(0x08, 0b00110101);
+  delay(2);
   tfp410_write(0x09, 0b00000001);
+  delay(2);
   tfp410_write(0x0A, 0b10000000);
-  tfp410_write(0x33, 0x00000000);
+  delay(2);
+  tfp410_write(0x33, 0b00000000);
+  delay(50);
 
-  //Configure TMDS261b
-  tmds261_write(0x01, 0b10010000);
-  tmds261_write(0x03, 0x80);
-
-  SerialUSB.begin(115200);
+  tmds261b_write(0x01, 0b10010000);
+  delay(2);
+  tmds261b_write(0x03, 0x80);
 }
 
 int current_disp = 2; //due to lineage ECID requirements, display must always be connected on boot.
 int last_disp = 0;
-byte current_sws_data[8];
-byte current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t current_sws_data[8];
+uint8_t current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 bool base_set = false;
-byte sws_offsets[8];
+uint8_t sws_offsets[8];
 int scrl_dir = 1;
 
 void fire_scroll_event() {
-  SerialUSB.println("scroll evt");
+  Serial.println("scroll evt");
   if(scrl_dir == 1) {
     Keyboard.press(KEY_UP_ARROW);
     delayMicroseconds(50);
@@ -155,11 +164,15 @@ void debug_print_sws() {
   Serial.println();
 }
 
+unsigned long last_disp_switch;
+
 void loop() {
+  /*
+  Serial.println("test");
   // put your main code here, to run repeatedly:
-  byte icm_req_ident = 0;
+  uint8_t icm_req_ident = 0;
   memset(icm_req_data, 0, icm_req_data_size);
-  byte icm_req_avail = LIN_slave.read(icm_req_data, icm_req_data_size, icm_req_ident);
+  uint8_t icm_req_avail = LIN_slave.read(icm_req_data, icm_req_data_size, icm_req_ident);
   
   if(icm_req_avail == 1) {
     bool empty = 1;
@@ -175,7 +188,7 @@ void loop() {
     }
 
     while(true) {
-      byte sws_resp_avail = LIN_master.readStream(sws_resp_data, sws_resp_data_size);
+      uint8_t sws_resp_avail = LIN_master.readStream(sws_resp_data, sws_resp_data_size);
       if(sws_resp_avail == 1) {
         if(icm_req_ident == 0x19) {
           memcpy(current_sws_data, sws_resp_data, sizeof(sws_resp_data));
@@ -192,20 +205,20 @@ void loop() {
           }
 
           if(offset(5, 34) && offset(6, 1) && offset(7, -35)) {
-            SerialUSB.println("down dir");
+            Serial.println("down dir");
             scrl_dir = 0;
           }
 
           if(offset(5, 34) && offset(6, 0) && offset(7, -34)) {
-            SerialUSB.println("up dir");
+            Serial.println("up dir");
             scrl_dir = 1;
           }
 
           if(current_sws_data != current_sws_base) {
-            SerialUSB.println("CHANGE on SWSR!");
+            Serial.println("CHANGE on SWSR!");
             debug_print_sws();
             if(current_disp == 1) {
-              SerialUSB.println("Proxying to ICM.");
+              Serial.println("Proxying to ICM.");
               //if icm displaying, proxy all keypresses.
               LIN_slave.writeResponse(sws_resp_data, sws_resp_data_size);
 
@@ -213,23 +226,23 @@ void loop() {
               if(offset(4, 64) && offset(7, -64)) {
                 //Exit
                 if(exit_hold_started_flag == false) {
-                  SerialUSB.println("Exit hold start.");
+                  Serial.println("Exit hold start.");
                   exit_hold_started_flag = true;
                   exit_hold_started_time = millis();
                 } else {
                   if(millis() - exit_hold_started_time > 3000) {
-                    SerialUSB.println("Exit released, switching to LineageOS");
+                    Serial.println("Exit released, switching to LineageOS");
                     current_disp = 2;
                     exit_hold_started_time = millis();
                   } else {
-                    SerialUSB.println("Exit released too quickly");
+                    Serial.println("Exit released too quickly");
                   }
                 }
               } else {
                 exit_hold_started_flag = false;
               }
             } else {
-              SerialUSB.println("Sending to LineageOS");
+              Serial.println("Sending to LineageOS");
               //if ext input displaying, proxy only volume up/down
               if(offset(5, 1) && offset(7, -1)) {
                 //volume up
@@ -250,15 +263,15 @@ void loop() {
               if(offset(4, 64) && offset(7, -64)) {
                 //Exit
                 if(exit_hold_started_flag == false) {
-                  SerialUSB.println("Exit hold start.");
+                  Serial.println("Exit hold start.");
                   exit_hold_started_flag = true;
                   exit_hold_started_time = millis();
                 } else {
                   if(millis() - exit_hold_started_time > 3000) {
-                    SerialUSB.println("Exit released, switching to ICM");
+                    Serial.println("Exit released, switching to ICM");
                     current_disp = 1;
                   } else {
-                    SerialUSB.println("Exit released too quickly");
+                    Serial.println("Exit released too quickly");
                     Keyboard.press(KEY_ESC);
                   }
                 }
@@ -297,21 +310,30 @@ void loop() {
         }
         break;
       } else {
-        SerialUSB.println("Waiting for LIN frame response from slave...");
+        Serial.println("Waiting for LIN frame response from slave...");
       }
     }
   }
+  */
 
+  if(millis() - last_disp_switch > 5000) {
+    last_disp_switch = millis();
+    if(current_disp == 1) {
+      current_disp = 2;
+    } else {
+      current_disp = 1;
+    }
+  }
 
   if(current_disp != last_disp) {
     last_disp = current_disp;
 
     if(current_disp == 1) {
-      SerialUSB.println("cmd: SWITCH to ICM");
-      tmds261_write(0x01, 0b11010000);
+      Serial.println("cmd: SWITCH to ICM");
+      tmds261b_write(0x01, 0b11010000);
     } else {
-      SerialUSB.println("cmd: SWITCH to EXT");
-      tmds261_write(0x01, 0b10010000);
+      Serial.println("cmd: SWITCH to EXT");
+      tmds261b_write(0x01, 0b10010000);
 
       //todo: switch to AUX input automatically.
     }
