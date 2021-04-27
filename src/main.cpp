@@ -6,17 +6,16 @@
 //Serial1 - LIN Slave (to ICM)
 //Serial2 - LIN Master (from SWSR)
 
-#include <SlowSoftWire.h>
-SlowSoftWire Wire = SlowSoftWire(13, 11);
+#include <Wire.h>
 
 //Setup LIN serials on SERCOMs
-Uart Serial2(&sercom1, 12, 10, SERCOM_RX_PAD_3, UART_TX_PAD_2); 
+Uart Serial2(&sercom1, 13, 11, SERCOM_RX_PAD_1, UART_TX_PAD_0); 
 void SERCOM1_Handler()
 {
   Serial2.IrqHandler();
 }
 
-Uart Serial3(&sercom2, 5, 2, SERCOM_RX_PAD_3, UART_TX_PAD_2);
+Uart Serial3(&sercom2, 38, 22, SERCOM_RX_PAD_1, UART_TX_PAD_0);
 void SERCOM2_Handler()
 {
   Serial3.IrqHandler();
@@ -69,6 +68,7 @@ lin_stack LIN_master(2, &Serial2); // Master - sends frames downstream to SWSR
 
 void setup() {
   Serial.begin(115200);
+  Serial1.begin(115200);
   
   delay(100);
   pinMode(3, OUTPUT);
@@ -78,12 +78,16 @@ void setup() {
 
   Wire.begin();
 
-  pinPeripheral(2, PIO_SERCOM_ALT);
-  pinPeripheral(5, PIO_SERCOM_ALT);
-  pinPeripheral(10, PIO_SERCOM_ALT);
-  pinPeripheral(12, PIO_SERCOM_ALT);
+  pinPeripheral(13, PIO_SERCOM_ALT);
+  pinPeripheral(11, PIO_SERCOM_ALT);
+  pinPeripheral(38, PIO_SERCOM_ALT);
+  pinPeripheral(22, PIO_SERCOM_ALT);
+  pinMode(2, OUTPUT);
+  pinMode(5, OUTPUT);
 
   Keyboard.begin();
+  digitalWrite(2, HIGH);
+  digitalWrite(5, HIGH);
 
   delay(400);
   tfp410_write(0x08, 0b00110101);
@@ -167,6 +171,56 @@ void debug_print_sws() {
 unsigned long last_disp_switch;
 
 void loop() {
+  if(Serial1.available() > 0) {
+    String str = Serial1.readStringUntil('\n');
+    
+    if(str.equals("TUN:1")) {
+      Keyboard.press(KEY_RIGHT_ARROW);
+      delay(20);
+      Keyboard.release(KEY_RIGHT_ARROW);
+    } else if(str.equals("TUN:-1")) {
+      Keyboard.press(KEY_LEFT_ARROW);
+      delay(20);
+      Keyboard.release(KEY_LEFT_ARROW);
+    }
+
+    if(str.equals("VOL:1")) {
+      Serial.println(str);
+    } else if(str.equals("VOL:-1")) {
+      Serial.println(str);
+    }
+
+    if(str.equals("EXIT:prs")) {
+      Keyboard.press(KEY_BACKSPACE);
+    } else if(str.equals("EXIT:rls")) {
+      Keyboard.release(KEY_BACKSPACE);
+    }
+
+    if(str.equals("OK:prs")) {
+      Keyboard.press(KEY_RETURN);
+    } else if(str.equals("OK:rls")) {
+      Keyboard.release(KEY_RETURN);
+    }
+
+    if(str.equals("PWR:prs")) {
+      Serial.println(str);
+    } else if(str.equals("PWR:rls")) {
+      Serial.println(str);
+    }
+
+    if(str.indexOf("PT") != -1) {
+      //pass temp
+      Serial.println(str);
+    }
+    if(str.indexOf("FS") != -1) {
+      //fan speed
+      Serial.println(str);
+    }
+    if(str.indexOf("DT") != -1) {
+      //pass temp
+      Serial.println(str);
+    }
+  }
   /*
   Serial.println("test");
   // put your main code here, to run repeatedly:
