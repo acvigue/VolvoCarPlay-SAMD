@@ -1,15 +1,13 @@
 #include <Arduino.h>
 #include "wiring_private.h"
-#include <lin_stack.h>
 #include <Keyboard.h>
 //Serial - 115200b USB
 //Serial1 - LIN Slave (to ICM)
 //Serial2 - LIN Master (from SWSR)
-
 #include <Wire.h>
 
 //Setup LIN serials on SERCOMs
-Uart Serial2(&sercom1, 13, 11, SERCOM_RX_PAD_1, UART_TX_PAD_0); 
+Uart Serial2(&sercom1, 37, 35, SERCOM_RX_PAD_1, UART_TX_PAD_0); 
 void SERCOM1_Handler()
 {
   Serial2.IrqHandler();
@@ -63,25 +61,28 @@ void tmds261b_write(byte reg, byte value) {
   Wire.endTransmission();
 }
 
-lin_stack LIN_slave(1, &Serial3); // Slave - sends responses upstream to ICM
-lin_stack LIN_master(2, &Serial2); // Master - sends frames downstream to SWSR
-
 void setup() {
   Serial.begin(115200);
   Serial1.begin(115200);
+  Serial2.begin(19200);
+  Serial3.begin(19200);
   
   delay(100);
   pinMode(3, OUTPUT);
+  digitalWrite(3, HIGH);
+  delay(200);
   digitalWrite(3, LOW);
   delay(200);
   digitalWrite(3, HIGH);
 
   Wire.begin();
 
-  pinPeripheral(13, PIO_SERCOM_ALT);
-  pinPeripheral(11, PIO_SERCOM_ALT);
-  pinPeripheral(38, PIO_SERCOM_ALT);
-  pinPeripheral(22, PIO_SERCOM_ALT);
+  
+  pinPeripheral(37, PIO_SERCOM);
+  pinPeripheral(35, PIO_SERCOM);
+  pinPeripheral(38, PIO_SERCOM);
+  pinPeripheral(22, PIO_SERCOM);
+  
   pinMode(2, OUTPUT);
   pinMode(5, OUTPUT);
 
@@ -90,7 +91,7 @@ void setup() {
   digitalWrite(5, HIGH);
 
   delay(400);
-  tfp410_write(0x08, 0b00110101);
+  tfp410_write(0x08, 0b0110101);
   delay(2);
   tfp410_write(0x09, 0b00000001);
   delay(2);
@@ -221,14 +222,18 @@ void loop() {
       Serial.println(str);
     }
   }
+
   /*
-  Serial.println("test");
+
   // put your main code here, to run repeatedly:
   uint8_t icm_req_ident = 0;
   memset(icm_req_data, 0, icm_req_data_size);
   uint8_t icm_req_avail = LIN_slave.read(icm_req_data, icm_req_data_size, icm_req_ident);
   
   if(icm_req_avail == 1) {
+    Serial.print("ICM request (");
+    Serial.print(icm_req_ident);
+    Serial.print("): ");
     bool empty = 1;
     for(int i = 0; i <= icm_req_data_size; i++) {
       if(icm_req_data[i] != 0x00) {
@@ -236,15 +241,21 @@ void loop() {
       }
     }
     if(empty) {
+      Serial.println(" empty! Sending header!");
       LIN_master.writeRequest(icm_req_ident);
     } else {
+      Serial.println(" not empty! Sending unregulated frame.");
       LIN_master.write(icm_req_ident, icm_req_data, icm_req_data_size);
     }
 
     while(true) {
       uint8_t sws_resp_avail = LIN_master.readStream(sws_resp_data, sws_resp_data_size);
       if(sws_resp_avail == 1) {
+        Serial.print("ICM response (");
+        Serial.print(icm_req_ident);
+        Serial.print("): ");
         if(icm_req_ident == 0x19) {
+          Serial.println(" SWSR!");
           memcpy(current_sws_data, sws_resp_data, sizeof(sws_resp_data));
 
           if(!base_set) {
@@ -368,7 +379,16 @@ void loop() {
       }
     }
   }
+
   */
+
+  if(Serial2.available()) {
+    Serial.write(Serial2.read());
+  }
+
+  if(Serial3.available()) {
+    Serial.write(Serial3.read());
+  }
 
   if(millis() - last_disp_switch > 5000) {
     last_disp_switch = millis();
@@ -384,11 +404,10 @@ void loop() {
 
     if(current_disp == 1) {
       Serial.println("cmd: SWITCH to ICM");
-      tmds261b_write(0x01, 0b11010000);
+      //tmds261b_write(0x01, 0b11010000);
     } else {
       Serial.println("cmd: SWITCH to EXT");
       tmds261b_write(0x01, 0b10010000);
-
       //todo: switch to AUX input automatically.
     }
   }
