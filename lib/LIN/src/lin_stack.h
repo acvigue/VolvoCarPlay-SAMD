@@ -52,7 +52,7 @@ class lin_stack
 		int writeRequest(byte add); // Write header only
 		int writeResponse(byte data[], byte data_size); // Write response only
 		int writeStream(byte data[], byte data_size); // Writing user data to LIN bus
-		int read(byte data[], byte data_size); // read data from LIN bus, checksum and ident validation
+		int read(byte data[], byte data_size, byte ident); // read data from LIN bus, checksum and ident validation
 		int readStream(byte data[],byte data_size); // read data from LIN bus
 	
 	// Private methods and variables

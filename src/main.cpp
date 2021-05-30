@@ -90,18 +90,11 @@ void setup() {
   digitalWrite(2, HIGH);
   digitalWrite(5, HIGH);
 
-  delay(400);
   tfp410_write(0x08, 0b0110101);
-  delay(2);
   tfp410_write(0x09, 0b00000001);
-  delay(2);
   tfp410_write(0x0A, 0b10000000);
-  delay(2);
   tfp410_write(0x33, 0b00000000);
-  delay(50);
-
   tmds261b_write(0x01, 0b10010000);
-  delay(2);
   tmds261b_write(0x03, 0x80);
 }
 
@@ -172,6 +165,11 @@ void debug_print_sws() {
 unsigned long last_disp_switch;
 
 void loop() {
+  master.writeRequest(0x20);
+  byte data[6] = {0x19, 0x18, 0x17, 0x16, 0x15, 0x14};
+  delayMicroseconds(2200);
+  slave.writeResponse(data, sizeof(data));
+  delay(8);
   if(Serial1.available() > 0) {
     String str = Serial1.readStringUntil('\n');
     
