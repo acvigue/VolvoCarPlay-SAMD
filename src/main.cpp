@@ -152,6 +152,8 @@ bool offset(int bitno, int val) {
 }
 int current_mode = 1;
 int last_mode = 1;
+int return_to_mode = 0;
+
 unsigned long long lastPollSWSR = 0;
 unsigned long long lastExitPressTime = 0;
 unsigned long exitHeldSecs = 0;
@@ -198,9 +200,9 @@ void loop() {
         Serial.println("exit");
         lastExitPressTime = millis();
         if(current_mode == 2) {
-          Keyboard.press('q');
+          Keyboard.press(KEY_BACKSPACE);
           delay(20);
-          Keyboard.release('q');
+          Keyboard.release(KEY_BACKSPACE);
         }
       }
 
@@ -292,23 +294,39 @@ void loop() {
   }
 
   if(Serial1.available() > 0) {
-    Serial.print(Serial1.read());
+    String str = Serial1.readStringUntil('\n');
+    Serial.println(str);
 
-    /*
     if(str.equals("TUN:1")) {
-      Keyboard.press(KEY_RIGHT_ARROW);
+      Keyboard.press(KEY_UP_ARROW);
       delay(20);
-      Keyboard.release(KEY_RIGHT_ARROW);
+      Keyboard.release(KEY_UP_ARROW);
     } else if(str.equals("TUN:-1")) {
-      Keyboard.press(KEY_LEFT_ARROW);
+      Keyboard.press(KEY_DOWN_ARROW);
       delay(20);
+      Keyboard.release(KEY_DOWN_ARROW);
+    }
+
+    if(str.equals("REW:prs")) {
+      Keyboard.press(KEY_LEFT_ARROW);
+    } else if(str.equals("REW:rls")) {
       Keyboard.release(KEY_LEFT_ARROW);
+    }
+
+    if(str.equals("FOR:prs")) {
+      Keyboard.press(KEY_RIGHT_ARROW);
+    } else if(str.equals("FOR:rls")) {
+      Keyboard.release(KEY_RIGHT_ARROW);
     }
 
     if(str.equals("VOL:1")) {
       Serial.println(str);
     } else if(str.equals("VOL:-1")) {
       Serial.println(str);
+    }
+
+    if(str.equals("CAM:prs") || str.equals("NAV:prs") || str.equals("TEL:prs")) {
+      current_mode = 1;
     }
 
     if(str.equals("EXIT:prs")) {
@@ -338,10 +356,72 @@ void loop() {
       Serial.println(str);
     }
     if(str.indexOf("DT") != -1) {
-      //pass temp
+      //driver temp
       Serial.println(str);
     }
-    */
+
+    if(str.equals("nums_all:rls")) {
+      Keyboard.releaseAll();
+    }
+
+    if(str.equals("1:prs")) {
+      Keyboard.press('1');
+    }
+
+    if(str.equals("2:prs")) {
+      Keyboard.press('2');
+    }
+
+    if(str.equals("3:prs")) {
+      Keyboard.press('3');
+    }
+
+    if(str.equals("4:prs")) {
+      Keyboard.press('4');
+    }
+
+    if(str.equals("5:prs")) {
+      Keyboard.press('5');
+    }
+
+    if(str.equals("6:prs")) {
+      Keyboard.press('6');
+    }
+
+    if(str.equals("7:prs")) {
+      Keyboard.press('7');
+    }
+
+    if(str.equals("8:prs")) {
+      Keyboard.press('8');
+    }
+
+    if(str.equals("9:prs")) {
+      Keyboard.press('9');
+    }
+
+    if(str.equals("*:prs")) {
+      Keyboard.press('*');
+    }
+
+    if(str.equals("0:prs")) {
+      Keyboard.press('0');
+    }
+
+    if(str.equals("#:prs")) {
+      Keyboard.press('#');
+    }
+    
+    if(str.equals("DRIVE")) {
+      current_mode = return_to_mode;
+      Serial.println("returning to return mode");
+    }
+
+    if(str.equals("REVERSE")) {
+      Serial.println("REVERSING");
+      return_to_mode = current_mode;
+      current_mode = 1;
+    }
   }
 
   if(current_mode != last_mode) {
