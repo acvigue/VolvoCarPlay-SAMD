@@ -106,21 +106,20 @@ int lin_stack::writeStream(byte data[], byte data_size){
 	return 1;
 }
 
-int lin_stack::read(byte data[], byte data_size, byte ident){
-	byte rec[data_size+3];
-	if(linSerialObj->read() != -1){ // Check if there is an event on LIN bus
-		linSerialObj->readBytes(rec,data_size+3);
-		if((validateParity(rec[1]))&(validateChecksum(rec,data_size+3))){
-			ident = rec[1];
-			for(int j=0;j<data_size;j++){
-			data[j] = rec[j+2];
-			}
-			return 1;
-		}else{
-			return -1;
-		}	
-	}
-	return 0;
+int lin_stack::read() {
+	byte rec[8];
+	linSerialObj->readBytes(rec,8);
+	Serial.print(rec[0]);
+	Serial.print(rec[1]);
+	Serial.print(rec[2]);
+	Serial.print(rec[3]);
+	Serial.print(rec[4]);
+	Serial.print(rec[5]);
+	return 1;
+}
+
+int lin_stack::readRaw() {
+	return linSerialObj->read();
 }
 
 int lin_stack::readStream(byte data[],byte data_size){
@@ -146,7 +145,7 @@ int lin_stack::serial_pause(int no_bits){
 
 	//Bring bus low via transistor
 	digitalWrite(8, HIGH);
-	delayMicroseconds(100*no_bits);
+	delayMicroseconds(100*(no_bits));
 	digitalWrite(8, LOW);
 
 	//Generate delimeter

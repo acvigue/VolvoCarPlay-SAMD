@@ -4,6 +4,10 @@
 #include "lin_stack.h"
 #include <Wire.h>
 
+//TMDS261B
+// Port 1 - Input from TFP410 - Volvo Orig ICM screen (11)
+// Port 2 - Input from HDMI plug (10)
+
 //Setup LIN serials on SERCOMs
 Uart LinSlave(&sercom1, 37, 35, SERCOM_RX_PAD_1, UART_TX_PAD_0); 
 void SERCOM1_Handler()
@@ -90,18 +94,18 @@ void setup() {
   digitalWrite(2, HIGH);
   digitalWrite(5, HIGH);
 
-  tfp410_write(0x08, 0b0110101);
+  delay(10);
+  tfp410_write(0x08, 0b00110101);
   tfp410_write(0x09, 0b00000001);
   tfp410_write(0x0A, 0b10000000);
   tfp410_write(0x33, 0b00000000);
-  tmds261b_write(0x01, 0b10010000);
+  delay(2);
+  tmds261b_write(0x01, 0b11010000);
   tmds261b_write(0x03, 0x80);
 }
 
-int current_disp = 2; //due to lineage ECID requirements, display must always be connected on boot.
-int last_disp = 0;
-uint8_t current_sws_data[8];
-uint8_t current_sws_base[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t current_sws_data[5] = {0x00, 0x00, 0x00, 0x00, 0xFF};
+uint8_t current_sws_base[5] = {0x00, 0x00, 0x00, 0x00, 0xFF};
 bool base_set = false;
 uint8_t sws_offsets[8];
 int scrl_dir = 1;
@@ -124,6 +128,7 @@ unsigned long long exit_hold_started_time = 0;
 
 bool offset(int bitno, int val) {
   int diff = 0-(current_sws_base[bitno] - current_sws_data[bitno]);
+
   if(val == diff) {
     return true;
   }
@@ -145,34 +150,151 @@ bool offset(int bitno, int val) {
 
   return false;
 }
-
-void debug_print_sws() {
-  Serial.print("Base: ");
-  for(int i = 0; i >= 8; i++) {
-    Serial.print(current_sws_base[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
-
-  Serial.print("Data: ");
-  for(int i = 0; i >= 8; i++) {
-    Serial.print(current_sws_data[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
-}
-
-unsigned long last_disp_switch;
-
+int current_mode = 1;
+int last_mode = 1;
+unsigned long long lastPollSWSR = 0;
+unsigned long long lastExitPressTime = 0;
+unsigned long exitHeldSecs = 0;
 void loop() {
-  master.writeRequest(0x20);
-  byte data[6] = {0x19, 0x18, 0x17, 0x16, 0x15, 0x14};
-  delayMicroseconds(2200);
-  slave.writeResponse(data, sizeof(data));
-  delay(8);
+  //Process LIN input
+  if(millis() - lastPollSWSR > 100) {
+    lastPollSWSR = millis();
+    master.writeRequest(0x20);
+    delayMicroseconds(2200);
+    while(LinMaster.available() > 0) {
+      LinMaster.read();
+    }
+    delayMicroseconds(7800);
+    uint8_t currdta[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
+    int dtapos = 0;
+    while(LinMaster.available() > 0) {
+      uint8_t t = LinMaster.read();
+      currdta[dtapos] = t;
+      dtapos++;
+    }
+
+    if(memcmp(current_sws_data, currdta, 5) != 0) {
+      memcpy(current_sws_data, currdta, 5);
+
+      if(offset(3, 1)) {
+        Serial.println("scroll down");
+        if(current_mode == 2) {
+          Keyboard.press(KEY_DOWN_ARROW);
+          delay(20);
+          Keyboard.release(KEY_DOWN_ARROW);
+        }
+      }
+
+      if(offset(2, 34) && offset(4, -34)) {
+        Serial.println("scroll up");
+        if(current_mode == 2) {
+          Keyboard.press(KEY_UP_ARROW);
+          delay(20);
+          Keyboard.release(KEY_UP_ARROW);
+        }
+      }
+
+      if(offset(0,0) && offset(1, 64) && offset(2, 0) && offset(3, 0) && offset(4, -64)) {
+        Serial.println("exit");
+        lastExitPressTime = millis();
+        if(current_mode == 2) {
+          Keyboard.press('q');
+          delay(20);
+          Keyboard.release('q');
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 4) && offset(2, 0) && offset(3, 0) && offset(4, -4)) {
+        Serial.println("voice");
+        if(current_mode == 2) {
+          Keyboard.press('v');
+          delay(20);
+          Keyboard.release('v');
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 0) && offset(2, 1) && offset(3, 0) && offset(4, -1)) {
+        Serial.println("vol up");
+        if(current_mode == 2) {
+          while(LinSlave.read() != 32) { }
+          slave.writeResponse(current_sws_data, 5);
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 128) && offset(2, 0) && offset(3, 0) && offset(4, -128)) {
+        Serial.println("vol dn");
+        if(current_mode == 2) {
+          while(LinSlave.read() != 32) { }
+          slave.writeResponse(current_sws_data, 5);
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 2) && offset(2, 0) && offset(3, 0) && offset(4, -2)) {
+        Serial.println("reverse");
+        if(current_mode == 2) {
+          Keyboard.press(KEY_LEFT_ARROW);
+          delay(20);
+          Keyboard.release(KEY_LEFT_ARROW);
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 16) && offset(2, 0) && offset(3, 0) && offset(4, -16)) {
+        Serial.println("forward");
+        if(current_mode == 2) {
+          Keyboard.press(KEY_RIGHT_ARROW);
+          delay(20);
+          Keyboard.release(KEY_RIGHT_ARROW);
+        }
+      }
+
+      else if(offset(0,0) && offset(1, 32) && offset(2, 0) && offset(3, 0) && offset(4, -32)) {
+        Serial.println("click!");
+        if(current_mode == 2) {
+          Keyboard.press(KEY_RETURN);
+          delay(20);
+          Keyboard.release(KEY_RETURN);
+        }
+      } else {
+        if(offset(4, 255) || offset(4, -255)) {
+
+        } else {
+          if(offset(0, 0) && offset(1, 0) && offset(2, 0) && offset(3, 0) && offset(4, 0)) {
+            
+          } else {
+            memcpy(current_sws_base, current_sws_data, 5);
+            while(LinSlave.read() != 32) { }
+            slave.writeResponse(current_sws_base, 5);
+          }
+        }
+      }
+    }
+  }
+
+  if(millis() - lastExitPressTime < 1000) {
+    exitHeldSecs++;
+    if(exitHeldSecs > 150) {
+      if(current_mode == 2) {
+        current_mode = 1;
+      } else {
+        current_mode = 2;
+      }
+      exitHeldSecs = 0;
+    }
+  } else {
+    exitHeldSecs = 0;
+  }
+
+
+  //Proxy all if in ICM mode.
+  if(current_mode == 1) {
+    slave.writeResponse(current_sws_data, 5);
+    delayMicroseconds(16500);
+  }
+
   if(Serial1.available() > 0) {
-    String str = Serial1.readStringUntil('\n');
-    
+    Serial.print(Serial1.read());
+
+    /*
     if(str.equals("TUN:1")) {
       Keyboard.press(KEY_RIGHT_ARROW);
       delay(20);
@@ -219,18 +341,18 @@ void loop() {
       //pass temp
       Serial.println(str);
     }
+    */
   }
 
-  if(current_disp != last_disp) {
-    last_disp = current_disp;
+  if(current_mode != last_mode) {
+    last_mode = current_mode;
 
-    if(current_disp == 1) {
+    if(current_mode == 1) {
       Serial.println("cmd: SWITCH to ICM");
       tmds261b_write(0x01, 0b11010000);
     } else {
       Serial.println("cmd: SWITCH to EXT");
       tmds261b_write(0x01, 0b10010000);
-      //todo: switch to AUX input automatically.
     }
   }
 }
