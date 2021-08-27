@@ -179,7 +179,6 @@ void loop() {
       memcpy(current_sws_data, currdta, 5);
 
       if(offset(3, 1)) {
-        Serial.println("scroll down");
         if(current_mode == 2) {
           Keyboard.press(KEY_DOWN_ARROW);
           delay(20);
@@ -188,7 +187,6 @@ void loop() {
       }
 
       if(offset(2, 34) && offset(4, -34)) {
-        Serial.println("scroll up");
         if(current_mode == 2) {
           Keyboard.press(KEY_UP_ARROW);
           delay(20);
@@ -197,7 +195,6 @@ void loop() {
       }
 
       if(offset(0,0) && offset(1, 64) && offset(2, 0) && offset(3, 0) && offset(4, -64)) {
-        Serial.println("exit");
         lastExitPressTime = millis();
         if(current_mode == 2) {
           Keyboard.press(KEY_BACKSPACE);
@@ -207,7 +204,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 4) && offset(2, 0) && offset(3, 0) && offset(4, -4)) {
-        Serial.println("voice");
         if(current_mode == 2) {
           Keyboard.press('v');
           delay(20);
@@ -216,7 +212,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 0) && offset(2, 1) && offset(3, 0) && offset(4, -1)) {
-        Serial.println("vol up");
         if(current_mode == 2) {
           while(LinSlave.read() != 32) { }
           slave.writeResponse(current_sws_data, 5);
@@ -224,7 +219,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 128) && offset(2, 0) && offset(3, 0) && offset(4, -128)) {
-        Serial.println("vol dn");
         if(current_mode == 2) {
           while(LinSlave.read() != 32) { }
           slave.writeResponse(current_sws_data, 5);
@@ -232,7 +226,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 2) && offset(2, 0) && offset(3, 0) && offset(4, -2)) {
-        Serial.println("reverse");
         if(current_mode == 2) {
           Keyboard.press(KEY_LEFT_ARROW);
           delay(20);
@@ -241,7 +234,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 16) && offset(2, 0) && offset(3, 0) && offset(4, -16)) {
-        Serial.println("forward");
         if(current_mode == 2) {
           Keyboard.press(KEY_RIGHT_ARROW);
           delay(20);
@@ -250,7 +242,6 @@ void loop() {
       }
 
       else if(offset(0,0) && offset(1, 32) && offset(2, 0) && offset(3, 0) && offset(4, -32)) {
-        Serial.println("click!");
         if(current_mode == 2) {
           Keyboard.press(KEY_RETURN);
           delay(20);
@@ -274,13 +265,24 @@ void loop() {
 
   if(millis() - lastExitPressTime < 1000) {
     exitHeldSecs++;
-    if(exitHeldSecs > 150) {
-      if(current_mode == 2) {
-        current_mode = 1;
-      } else {
-        current_mode = 2;
+    if(current_mode == 1) {
+      if(exitHeldSecs > 150) {
+        if(current_mode == 2) {
+          current_mode = 1;
+        } else {
+          current_mode = 2;
+        }
+        exitHeldSecs = 0;
       }
-      exitHeldSecs = 0;
+    } else {
+      if(exitHeldSecs > (15000)) {
+        if(current_mode == 2) {
+          current_mode = 1;
+        } else {
+          current_mode = 2;
+        }
+        exitHeldSecs = 0;
+      }
     }
   } else {
     exitHeldSecs = 0;
@@ -288,14 +290,35 @@ void loop() {
 
 
   //Proxy all if in ICM mode.
+  //This block makes me hate everything.
   if(current_mode == 1) {
-    slave.writeResponse(current_sws_data, 5);
-    delayMicroseconds(16500);
+    bool flag = false;
+    for(int i = 0; i < 20; i++) {
+      if(digitalRead(37) == LOW) {
+        flag = true;
+      }
+      delayMicroseconds(10);
+    }
+    if(flag == false) { 
+      slave.writeResponse(current_sws_data, 5);
+    }
   }
 
   if(Serial1.available() > 0) {
     String str = Serial1.readStringUntil('\n');
+    Serial1.flush();
     Serial.println(str);
+
+    if(str.equals("DRIVE")) {
+      current_mode = return_to_mode;
+      Serial.println("returning to return mode");
+    }
+
+    if(str.equals("REVERSE")) {
+      Serial.println("REVERSING");
+      return_to_mode = current_mode;
+      current_mode = 1;
+    }
 
     if(str.equals("TUN:1")) {
       Keyboard.press(KEY_UP_ARROW);
@@ -305,18 +328,6 @@ void loop() {
       Keyboard.press(KEY_DOWN_ARROW);
       delay(20);
       Keyboard.release(KEY_DOWN_ARROW);
-    }
-
-    if(str.equals("REW:prs")) {
-      Keyboard.press(KEY_LEFT_ARROW);
-    } else if(str.equals("REW:rls")) {
-      Keyboard.release(KEY_LEFT_ARROW);
-    }
-
-    if(str.equals("FOR:prs")) {
-      Keyboard.press(KEY_RIGHT_ARROW);
-    } else if(str.equals("FOR:rls")) {
-      Keyboard.release(KEY_RIGHT_ARROW);
     }
 
     if(str.equals("VOL:1")) {
@@ -411,27 +422,14 @@ void loop() {
     if(str.equals("#:prs")) {
       Keyboard.press('#');
     }
-    
-    if(str.equals("DRIVE")) {
-      current_mode = return_to_mode;
-      Serial.println("returning to return mode");
-    }
-
-    if(str.equals("REVERSE")) {
-      Serial.println("REVERSING");
-      return_to_mode = current_mode;
-      current_mode = 1;
-    }
   }
 
   if(current_mode != last_mode) {
     last_mode = current_mode;
 
     if(current_mode == 1) {
-      Serial.println("cmd: SWITCH to ICM");
       tmds261b_write(0x01, 0b11010000);
     } else {
-      Serial.println("cmd: SWITCH to EXT");
       tmds261b_write(0x01, 0b10010000);
     }
   }
