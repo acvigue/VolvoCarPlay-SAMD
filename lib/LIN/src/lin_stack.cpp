@@ -135,7 +135,7 @@ int lin_stack::readStream(byte data[],byte data_size){
 }
 
 int lin_stack::begin() {
-	linSerialObj->begin(10000);
+	linSerialObj->begin(10417);
 	return 1;
 }
 
