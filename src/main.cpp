@@ -213,14 +213,12 @@ void loop() {
 
       else if(offset(0,0) && offset(1, 0) && offset(2, 1) && offset(3, 0) && offset(4, -1)) {
         if(current_mode == 2) {
-          while(LinSlave.read() != 32) { }
           slave.writeResponse(current_sws_data, 5);
         }
       }
 
       else if(offset(0,0) && offset(1, 128) && offset(2, 0) && offset(3, 0) && offset(4, -128)) {
         if(current_mode == 2) {
-          while(LinSlave.read() != 32) { }
           slave.writeResponse(current_sws_data, 5);
         }
       }
@@ -292,16 +290,7 @@ void loop() {
   //Proxy all if in ICM mode.
   //This block makes me hate everything.
   if(current_mode == 1) {
-    bool flag = false;
-    for(int i = 0; i < 20; i++) {
-      if(digitalRead(37) == LOW) {
-        flag = true;
-      }
-      delayMicroseconds(10);
-    }
-    if(flag == false) { 
-      slave.writeResponse(current_sws_data, 5);
-    }
+    slave.writeResponse(current_sws_data, 5);
   }
 
   if(Serial1.available() > 0) {
