@@ -1,48 +1,10 @@
-/*  Copyright (c) 2016 Macchina
- *
- *  Permission is hereby granted, free of charge, to any person obtaining
- *  a copy of this software and associated documentation files (the
- *  "Software"), to deal in the Software without restriction, including
- *  without limitation the rights to use, copy, modify, merge, publish,
- *  distribute, sublicense, and/or sell copies of the Software, and to
- *  permit persons to whom the Software is furnished to do so, subject to
- *  the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included
- *  in all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- *  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- *  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- *  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- *  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *  
- *  LIN STACK for TJA1021
- *  v2.0
- *
- *  Short description: 
- *  Comunication stack for LIN and TJA1021 LIN transceiver. 
- *  Can be modified for any Arduino board with UART available and any LIN slave.
- *  
- *  Author: Blaž Pongrac B.S., RoboSap, Institute of Technology, Ptuj (www.robosap-institut.eu)
- *  
- *  Arduino IDE 1.6.9
- *  RoboSap, Institute of Technology, September 2016
-*/ 
-
 #include <Arduino.h>
-
-/*
-	Please, read Getting Started Guide firts.
-*/
 
 class lin_stack
 {
 	public:
 		// Constructors
-		lin_stack(Uart *linSerial); // Constructor for Master Node
+		lin_stack(Uart *linSerial, int txPin); // Constructor for Master Node
 		
 		// Methods
 		
@@ -59,6 +21,7 @@ class lin_stack
 	
 	// Private methods and variables
 	private:
+		int _txPin;
 		const unsigned long bound_rate = 10000; // 10417 is best for LIN Interface, most device should work
 		const unsigned int period = 100; // in microseconds, 1s/10417
 		Uart *linSerialObj;

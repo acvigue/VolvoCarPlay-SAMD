@@ -10,12 +10,15 @@
 // Port 2 - Input from HDMI plug (10)
 
 //Setup LIN serials on SERCOMs
+
+//LIN slave connects to ICM with RX=13, TX=11
 Uart LinSlave(&sercom1, 13, 11, SERCOM_RX_PAD_1, UART_TX_PAD_0); 
 void SERCOM1_Handler()
 {
   LinSlave.IrqHandler();
 }
 
+//LIN master connects to SWSR with RX=7, TX=6
 Uart LinMaster(&sercom5, 7, 6, SERCOM_RX_PAD_3, UART_TX_PAD_2); 
 void SERCOM5_Handler()
 {
@@ -30,36 +33,33 @@ uint8_t sws_resp_data[8];
 #define MODE_ICM 1
 #define MODE_EXT 2
 
-lin_stack master(&LinMaster);
-lin_stack slave(&LinSlave);
+lin_stack master(&LinMaster, 6);
+lin_stack slave(&LinSlave, 11);
 
 void setup() {
-  pinPeripheral(13, PIO_SERCOM);
-  pinPeripheral(11, PIO_SERCOM);
-  pinPeripheral(6, PIO_SERCOM);
-  pinPeripheral(7, PIO_SERCOM);
-
   Serial.begin(115200);
   Serial1.begin(115200);
+
   Wire.begin();
   Keyboard.begin();
 
   master.begin();
   slave.begin();
 
-  delay(100);
   pinMode(3, OUTPUT);
   digitalWrite(3, HIGH);
-  delay(200);
+  delay(20);
   digitalWrite(3, LOW);
-  delay(200);
+  delay(20);
   digitalWrite(3, HIGH);
 
+  //Power up LIN transcievers
   pinMode(2, OUTPUT);
   pinMode(5, OUTPUT);
-  pinMode(8, OUTPUT);
   digitalWrite(2, HIGH);
   digitalWrite(5, HIGH);
+
+  pinMode(8, OUTPUT);
 
   delay(10);
   tfp410_write(0x08, 0b00110101);
@@ -96,11 +96,13 @@ int offset(int pos) {
 }
 
 void loop() {
-  //Return requests for SWSR position
+  //Return requests for SWSR position - inner circle of hell.
   if(LinSlave.available() > 0) {
+    //Check for valid synch byte (0x55)
     if(LinSlave.read() == 0x55) {
       delayMicroseconds(2200);
       byte h2 = LinSlave.read();
+      //h2 = PID byte from frame (0x20 - SWSR, 0x50 - SWSR lighting)
       if(h2 == 0x20) {
         needCheckSWSR = true;
         if(needSendData == true || current_mode == MODE_ICM) {
@@ -108,22 +110,23 @@ void loop() {
         } else {
           slave.writeResponse(current_swsr_base, 4);
         }
-      } else {
-        //Serial.println(h2);
-        if(h2 == 0x50) {
-          delayMicroseconds(2000);
-          uint8_t t1 = LinSlave.read();
-          uint8_t t2 = LinSlave.read();
-          uint8_t t3 = LinSlave.read();
-          uint8_t currdta[3] = {t1,0x00,t3};
-          master.writeRequest(0x10);
-          LinMaster.write(currdta, 3);
-        }
+      } else if(h2 == 0x50) {
+        delayMicroseconds(2000);
+        uint8_t t1 = LinSlave.read();
+        uint8_t t2 = LinSlave.read();
+        uint8_t t3 = LinSlave.read();
+        uint8_t currdta[3] = {t1,0x00,t3};
+        master.writeRequest(0x10);
+        LinMaster.write(currdta, 3);
       }
     }
   }
 
+  //Process potential keypresses.
   if(needProcessKeypress) {
+
+    //If data equals the base value, then all keys are released.
+    //Get last key and release it from the HID report.
     if(memcmp(current_swsr_base, current_swsr_data, 5) == 0) {
       needSendData = false;
       if(ignoreNextKeypress) {
@@ -131,6 +134,8 @@ void loop() {
         if(lastKey != "") {
           if(lastKey == "exit") {
             int keyHeldFor = millis() - keyPressTime;
+
+            //If key was held for > 500ms, switch inputs, else send key.
             if(keyHeldFor > 500) {
               if(current_mode == MODE_EXT) {
                 current_mode = MODE_ICM;
@@ -149,8 +154,21 @@ void loop() {
           if(lastKey == "voice") {
             Keyboard.release('V');
           }
+
+          if(lastKey == "ff") {
+            Keyboard.release(KEY_RIGHT_ARROW);
+          }
+
+          if(lastKey == "rw") {
+            Keyboard.release(KEY_LEFT_ARROW);
+          }
+
+          if(lastKey == "enter") {
+            Keyboard.release(KEY_RETURN);
+          }
         }
       }
+      //If the offset of bits 2 & 4 are even and one is equal to the other ignoring negatives, then the wheel was scrolled.
     } else if(offset(2)%2==0 && offset(4)%2==0 && (offset(2) == -1*offset(4) || offset(4) == -1*offset(2))) {
       memcpy(current_swsr_base, currdtax, 5);
       if(ignoreNextEvent) {
@@ -161,7 +179,7 @@ void loop() {
         Serial.println("scroll up");
         if(current_mode == MODE_EXT) {
           Keyboard.press(KEY_UP_ARROW);
-          delay(50);
+          delay(25);
           Keyboard.releaseAll();
         }
       }
@@ -171,7 +189,7 @@ void loop() {
       lastKey = "down";
       if(current_mode == MODE_EXT) {
         Keyboard.press(KEY_DOWN_ARROW);
-        delay(50);
+        delay(25);
         Keyboard.releaseAll();
       }
     } else if(offset(1) == 32 && offset(4) == -32) {
@@ -179,8 +197,6 @@ void loop() {
       lastKey = "enter";
       if(current_mode == MODE_EXT) {
         Keyboard.press(KEY_RETURN);
-        delay(50);
-        Keyboard.releaseAll();
       }
     } else if(offset(1) == 64 && offset(4) == -64) {
       Serial.println("exit");
@@ -197,16 +213,12 @@ void loop() {
       lastKey = "fw";
       if(current_mode == MODE_EXT) {
         Keyboard.press(KEY_RIGHT_ARROW);
-        delay(50);
-        Keyboard.releaseAll();
       }
     } else if(offset(1) == 2 && offset(4) == -2) {
       Serial.println("rw");
       lastKey = "rw";
       if(current_mode == MODE_EXT) {
         Keyboard.press(KEY_LEFT_ARROW);
-        delay(50);
-        Keyboard.releaseAll();
       }
     } else if(offset(2) == 1 && offset(4) == -1) {
       lastKey = "volup";
@@ -220,22 +232,27 @@ void loop() {
     ignoreNextKeypress = true;
     needProcessKeypress = false;
   }
-
+  
+  //Master requested SWSR, may as well ask ourselves to get new state.
   if(needCheckSWSR == true) {
     needCheckSWSR = false;
     master.writeRequest(0x20);
     delayMicroseconds(2200);
+    //flush input buffer
     while(LinMaster.available() > 0) {
       LinMaster.read();
     }
     delayMicroseconds(7800);
+
     int dtapos = 0;
+    //read data bytes from slave bus
     while(LinMaster.available() > 0) {
       uint8_t t = LinMaster.read();
       currdtax[dtapos] = t;
       dtapos++;
     }
     
+    //if there was a change, we need to process potential keypresses.
     if(memcmp(current_swsr_data, currdtax, 5) != 0) {
       memcpy(current_swsr_data, currdtax, 5);
       needProcessKeypress = true;
@@ -244,6 +261,7 @@ void loop() {
     }
   }
 
+  //Handle switching HDMI inputs
   if(current_mode != last_mode) {
     last_mode = current_mode;
     if(current_mode == MODE_ICM) {
@@ -252,12 +270,24 @@ void loop() {
       tmds261b_write(0x01, 0b10010000);
     }
   }
-
+  
+  //Handle CANbus events from waterfall console.
   if(Serial1.available() > 0) {
     String str = Serial1.readStringUntil('\n');
     Serial.println(str);
     if(str.indexOf("nums_all:rls") != -1) {
-      Keyboard.releaseAll();
+      Keyboard.release('1');
+      Keyboard.release('2');
+      Keyboard.release('3');
+      Keyboard.release('4');
+      Keyboard.release('5');
+      Keyboard.release('6');
+      Keyboard.release('7');
+      Keyboard.release('8');
+      Keyboard.release('9');
+      Keyboard.release('0');
+      Keyboard.release('*');
+      Keyboard.release('#');
     }
 
     if(str.indexOf("1:prs") != -1) {

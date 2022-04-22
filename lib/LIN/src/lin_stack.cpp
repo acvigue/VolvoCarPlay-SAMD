@@ -1,58 +1,10 @@
-/*  Copyright (c) 2016 Macchina
- *
- *  Permission is hereby granted, free of charge, to any person obtaining
- *  a copy of this software and associated documentation files (the
- *  "Software"), to deal in the Software without restriction, including
- *  without limitation the rights to use, copy, modify, merge, publish,
- *  distribute, sublicense, and/or sell copies of the Software, and to
- *  permit persons to whom the Software is furnished to do so, subject to
- *  the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included
- *  in all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- *  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- *  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- *  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- *  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- *  LIN STACK for TJA1021 
- *  v2.0
- *
- *  Short description: 
- *  Comunication stack for LIN and TJA1021 LIN transceiver. 
- *  Can be modified for any Arduino board with UART available and any LIN slave.
- *  
- *  Author: Blaž Pongrac B.S., RoboSap, Institute of Technology, Ptuj (www.robosap-institut.eu)
- *  
- *  Arduino IDE 1.6.9
- *  RoboSap, Institute of Technology, September 2016
- */ 
-
 #include <lin_stack.h>
 #include <wiring_private.h>
 
-/* LIN PACKET:
-   It consist of:
-    ___________ __________ _______ ____________ _________ 
-   |           |          |       |            |         |
-   |Synch Break|Synch Byte|ID byte| Data Bytes |Checksum |
-   |___________|__________|_______|____________|_________|
-   
-   Every byte have start bit and stop bit and it is send LSB first.
-   Synch Break - 13 bits of dominant state ("0"), followed by 1 bit recesive state ("1")
-   Synch Byte - Byte for Bound rate syncronization, always 0x55
-   ID Byte - consist of parity, length and address; parity is determined by LIN standard and depends from address and message length
-   Data Bytes - user defined; depend on devices on LIN bus
-   Checksum - inverted 256 checksum; data bytes are sumed up and then inverted
-*/
-
 // CONSTRUCTORS
-lin_stack::lin_stack(Uart *linSerial) {
+lin_stack::lin_stack(Uart *linSerial, int txPin) {
 	linSerialObj = linSerial;
+	_txPin = txPin;
 }
 
 // PUBLIC METHODS
