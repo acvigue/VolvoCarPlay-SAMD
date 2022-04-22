@@ -66,7 +66,7 @@ int lin_stack::write(byte ident, byte data[], byte data_size){
 	//suma = suma + 1;
 	byte checksum = 255 - suma;
 	// Synch Break
-	serial_pause(13);
+	serial_pause(20);
 	linSerialObj->write(0x55); // write Synch Byte to serial
 	linSerialObj->write(ident); // write Identification Byte to serial
 	for(int i=0;i<data_size;i++) linSerialObj->write(data[i]); // write data to serial
@@ -80,7 +80,7 @@ int lin_stack::writeRequest(byte ident){
 	byte header[2]= {0x55, identByte};
 	// Start interface
 	// Synch Break
-	serial_pause(13);
+	serial_pause(20);
 	// Send data via Serial interface
 	linSerialObj->write(header,2); // write data to serial
 	return 1;
@@ -100,7 +100,7 @@ int lin_stack::writeResponse(byte data[], byte data_size){
 
 int lin_stack::writeStream(byte data[], byte data_size){
 	// Synch Break
-	serial_pause(13);
+	serial_pause(20);
 	// Send data via Serial interface
 	for(int i=0;i<data_size;i++) linSerialObj->write(data[i]);
 	return 1;
@@ -135,7 +135,7 @@ int lin_stack::readStream(byte data[],byte data_size){
 }
 
 int lin_stack::begin() {
-	linSerialObj->begin(10417);
+	linSerialObj->begin(9600);
 	return 1;
 }
 
